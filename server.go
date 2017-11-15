@@ -1,13 +1,26 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
-	"github.com/olahol/melody"
 	"net/http"
 	"path/filepath"
 	"sync"
+
+	"encoding/json"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+	"github.com/olahol/melody"
 )
+
+type gameSession struct {
+	p [2]*melody.Session
+	c string
+}
+
+type gameMessage struct {
+	T    string `json:"type"`
+	Data []byte `json:"data"`
+}
 
 func main() {
 	r := gin.New()
@@ -42,41 +55,49 @@ func main() {
 	})
 
 	var mutex sync.Mutex
-	pairs := make(map[*melody.Session]*melody.Session)
-
+	partners := make(map[string]*gameSession)
+	pool := make(map[*melody.Session]string)
 	m.HandleConnect(func(s *melody.Session) {
 		mutex.Lock()
-		var partner *melody.Session
-		for player1, player2 := range pairs {
-			if player2 == nil {
-				partner = player1
-				pairs[partner] = s
-				partner.Write([]byte("join 1"))
-				break
-			}
-		}
-		pairs[s] = partner
-		if partner != nil {
-			s.Write([]byte("join 2"))
-		}
+		pool[s] = ""
 		mutex.Unlock()
 	})
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
-		partner := pairs[s]
-		if partner != nil {
-			partner.Write(msg)
+		var ms gameMessage
+		json.Unmarshal(msg, &m)
+		mutex.Lock()
+		p := partners[pool[s]]
+		mutex.Unlock()
+		if ms.T == "connect" {
+			if _, ok := partners[string(ms.Data)]; !ok {
+				partners[string(ms.Data)].c = string(ms.Data)
+			} else {
+				partners[string(ms.Data)] = &gameSession{[2]*melody.Session{s, nil}, string(ms.Data)}
+			}
+		} else {
+			if p.p[0] == s {
+				p.p[1].Write(msg)
+			} else {
+				p.p[0].Write(msg)
+			}
 		}
 	})
 
 	m.HandleDisconnect(func(s *melody.Session) {
+		var pn int8
 		mutex.Lock()
-		partner := pairs[s]
-		if partner != nil {
-			pairs[partner] = nil
-			partner.Write([]byte("part"))
+		p := partners[pool[s]]
+		if p.p[0] == s {
+			pn = 1
+		} else {
+			pn = 0
 		}
-		delete(pairs, s)
+		if p.p[pn] != nil {
+			p.p[pn].Write([]byte("part"))
+		} else {
+			delete(partners, p.c)
+		}
 		mutex.Unlock()
 	})
 

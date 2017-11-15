@@ -85,6 +85,13 @@ function clearScreen() {
   }
 }
 
+/*function setControl() {
+  nes.buttonDown(1, jsnes.Controller.BUTTON_A);
+  nes.frame();
+  nes.buttonUp(1, jsnes.Controller.BUTTON_A);
+  nes.frame();
+}*/
+
 function createNes() {
   frame = 0;
   nes = new JSNES({});
@@ -145,12 +152,11 @@ function triggerKey(type, keyCode) {
 }
 
 function sendKey(type, keyCode) {
-  ws.send(type + " " + keyCode);
+  ws.send(JSON.stringify({"type":type, "data":keyCode}));
 }
 
 function sendScreen(buffer) {
-  var image = screen[0].toDataURL();
-  ws.send("data " + image);
+  ws.send(JSON.stringify({"type":"data", "data":screen[0].toDataURL()}));
 }
 
 function drawData(data) {
@@ -195,9 +201,9 @@ function stopPlaying() {
 }
 
 ws.onmessage = function (msg) {
-  var parts = msg.data.split(" ");
-  var cmd = parts[0];
-  var data = parts[1];
+  var obj = JSON.parse(msg);
+  var cmd = obj['type'];
+  var data = obj['data'];
 
   if (cmd === "join") {
     startPlaying(data);
