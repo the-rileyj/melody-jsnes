@@ -47,7 +47,9 @@
 			<option value="" disabled="disabled" selected="selected">Please select a game</option>
 		</select>
 	</p>
-	<p id="keys">Arrow keys = joypad, X = a, Z = b, Enter = start, Ctrl = select</p>
+  <p id="keys">Arrow keys = joypad, X = a, Z = b, Enter = start, Ctrl = select</p>
+  <input type="text" placeholder="channel" id="channel"></input>
+  <button id="schannel">Join Channel</button>
   <div id="emulator"></div>
 </div>
 
@@ -67,6 +69,7 @@ $(function () {
 
 var url = "ws://" + window.location.host + "/ws";
 var ws = new WebSocket(url);
+var chn = $("#channel"), sch = $("#schannel");
 
 var screen = $("<canvas width='256' height='240'>");
 var context = screen[0].getContext('2d');
@@ -151,7 +154,7 @@ function triggerKey(type, keyCode) {
   $(document).trigger(e);
 }
 
-function sendKey(type, keyCode) {
+function sendData(type, keyCode) {
   ws.send(JSON.stringify({"type":type, "data":keyCode}));
 }
 
@@ -233,16 +236,21 @@ var keyMap = {
   39: 102
 };
 
+sch.click(function(){
+  console.log("test")
+  sendData("connect", chn.val());
+})
+
 $(document).bind("keydown", function(evt) {
   var code = evt.keyCode;
   if (window.player == 1) { nes.keyboard.keyDown(evt); }
-  if (window.player == 2 && keyMap[code]) { evt.preventDefault(); sendKey("keydown", keyMap[code]); }
+  if (window.player == 2 && keyMap[code]) { evt.preventDefault(); sendData("keydown", keyMap[code]); }
 });
 
 $(document).bind("keyup", function(evt) {
   var code = evt.keyCode;
   if (window.player == 1) { nes.keyboard.keyUp(evt); }
-  if (window.player == 2 && keyMap[code]) { evt.preventDefault(); sendKey("keyup", keyMap[code]); }
+  if (window.player == 2 && keyMap[code]) { evt.preventDefault(); sendData("keyup", keyMap[code]); }
 });
 
 clearScreen();

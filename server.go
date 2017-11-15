@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -20,6 +21,16 @@ type gameSession struct {
 type gameMessage struct {
 	T    string `json:"type"`
 	Data []byte `json:"data"`
+	Msg  string `json:"msg"`
+}
+
+func msgToBytes(t, msg string) []byte {
+	s := gameMessage{t, []byte(msg), ""}
+	b, err := json.Marshal(s)
+	if err != nil {
+		return []byte("")
+	}
+	return b
 }
 
 func main() {
@@ -57,6 +68,7 @@ func main() {
 	var mutex sync.Mutex
 	partners := make(map[string]*gameSession)
 	pool := make(map[*melody.Session]string)
+
 	m.HandleConnect(func(s *melody.Session) {
 		mutex.Lock()
 		pool[s] = ""
@@ -65,15 +77,31 @@ func main() {
 
 	m.HandleMessage(func(s *melody.Session, msg []byte) {
 		var ms gameMessage
-		json.Unmarshal(msg, &m)
+		json.Unmarshal(msg, &ms)
+		fmt.Printf("Type: %s, Data: %s\n", ms.T, ms.Data)
 		mutex.Lock()
 		p := partners[pool[s]]
 		mutex.Unlock()
 		if ms.T == "connect" {
-			if _, ok := partners[string(ms.Data)]; !ok {
-				partners[string(ms.Data)].c = string(ms.Data)
+			mutex.Lock()
+			pool[s] = ms.Msg
+			mutex.Unlock()
+			if p != nil {
+				var pn, mn int
+				if p.p[0] == s {
+					mn, pn = 1, 2
+				} else {
+					mn, pn = 2, 1
+				}
+				mutex.Lock()
+				partners[ms.Msg].c = ms.Msg
+				mutex.Unlock()
+				s.Write(msgToBytes("join", string(mn)))
+				s.Write(msgToBytes("join", string(pn)))
 			} else {
+				mutex.Lock()
 				partners[string(ms.Data)] = &gameSession{[2]*melody.Session{s, nil}, string(ms.Data)}
+				mutex.Unlock()
 			}
 		} else {
 			if p.p[0] == s {
@@ -87,7 +115,12 @@ func main() {
 	m.HandleDisconnect(func(s *melody.Session) {
 		var pn int8
 		mutex.Lock()
+		if pool[s] == "" {
+			mutex.Unlock()
+			return
+		}
 		p := partners[pool[s]]
+		mutex.Unlock()
 		if p.p[0] == s {
 			pn = 1
 		} else {
@@ -96,9 +129,10 @@ func main() {
 		if p.p[pn] != nil {
 			p.p[pn].Write([]byte("part"))
 		} else {
+			mutex.Lock()
 			delete(partners, p.c)
+			mutex.Unlock()
 		}
-		mutex.Unlock()
 	})
 
 	r.Run(":5000")
